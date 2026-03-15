@@ -1,67 +1,70 @@
-const path = require('path');
-const express = require('express');
-const dotenv = require('dotenv');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-
-const connectDB = require('./config/db');
-const authRoutes = require('./routes/authRoutes');
-const assetRoutes = require('./routes/assetRoutes');
-const tenantRoutes = require('./routes/tenantRoutes');
-const rentalRoutes = require('./routes/rentalRoutes');
-const paymentRoutes = require('./routes/paymentRoutes');
-const supportRoutes = require('./routes/supportRoutes');
-const dashboardRoutes = require('./routes/dashboardRoutes');
-const errorHandler = require('./middleware/errorHandler');
+const express   = require("express");
+const cors      = require("cors");
+const dotenv    = require("dotenv");
 
 dotenv.config();
+
+const connectDB = require("./config/db");
 connectDB();
 
 const app = express();
 
-app.use(express.json());
+app.use(cors({
+  origin: "*",
+  methods: ["GET","POST","PUT","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization"],
+  credentials: true,
+}));
+
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use(helmet());
-app.use(morgan('dev'));
-app.use(
-  cors({
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://localhost:3000',
-      process.env.CLIENT_URL,
-    ].filter(Boolean),
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
 
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
-
-app.use('/api/auth', authRoutes);
-app.use('/api/assets', assetRoutes);
-app.use('/api/tenants', tenantRoutes);
-app.use('/api/rentals', rentalRoutes);
-app.use('/api/payments', paymentRoutes);
-app.use('/api/support', supportRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-
-app.use((err, req, res, _next) => {
-  console.error(err.stack);
-  return _next(err);
+// -- Health check -- MUST be first --
+app.get("/", (req, res) => {
+  res.status(200).json({
+    message: "RentWise API running ✅",
+    env:     process.env.NODE_ENV || "development",
+    time:    new Date().toISOString(),
+  });
 });
 
-app.use(errorHandler);
+app.get("/api", (req, res) => {
+  res.status(200).json({
+    message: "RentWise API ✅"
+  });
+});
 
-// For local development
+// -- Routes --
+app.use("/api/auth",      require("./routes/authRoutes"));
+app.use("/api/assets",    require("./routes/assetRoutes"));
+app.use("/api/rentals",   require("./routes/rentalRoutes"));
+app.use("/api/payments",  require("./routes/paymentRoutes"));
+app.use("/api/tenants",   require("./routes/tenantRoutes"));
+app.use("/api/support",   require("./routes/supportRoutes"));
+app.use("/api/dashboard", require("./routes/dashboardRoutes"));
+
+// -- 404 --
+app.use((req, res) => {
+  res.status(404).json({
+    message: `Route ${req.method} ${req.url} not found`
+  });
+});
+
+// -- Error handler --
+app.use((err, req, res, next) => {
+  console.error("Error:", err.message);
+  res.status(500).json({
+    message: err.message || "Server Error"
+  });
+});
+
+// -- Local dev only --
 if (process.env.NODE_ENV !== "production") {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
   });
 }
 
-// Export for Vercel
+// -- Export for Vercel --
 module.exports = app;
